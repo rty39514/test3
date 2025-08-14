@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Translator - Voice Roots</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=Open+Sans&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --purple:#6c63ff;
+  --purple-dark:#5548c8;
+  --bg:#f9f8ff;
+  --card:#fff;
+  --muted:#666;
+  --radius:12px;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:"Open Sans",system-ui,Arial;
+  background:var(--bg);
+  padding:26px;
+}
+.wrap{max-width:920px;margin:30px auto;background:var(--card);padding:30px;border-radius:18px;box-shadow:0 12px 30px rgba(0,0,0,0.08)}
+h1{font-family:'Montserrat',sans-serif;margin:0 0 14px 0;font-size:28px;color:#222}
+label{display:block;margin-top:12px;font-weight:700;color:#333}
+select, textarea{width:100%;padding:10px;margin-top:8px;border-radius:10px;border:1px solid #ddd;resize:vertical}
+.controls{display:flex;gap:10px;margin-top:12px}
+button{background:var(--purple);color:#fff;border:none;padding:10px 16px;border-radius:10px;cursor:pointer;font-weight:700}
+button:hover{background:var(--purple-dark)}
+.status{margin-top:8px;color:#444}
+textarea[readonly]{background:#f5f5f7}
+.chip{display:inline-block;padding:3px 8px;border:1px solid #ddd;border-radius:12px;margin-right:6px;margin-top:4px;cursor:pointer;}
+#speakButton{padding:10px;border-radius:10px;cursor:pointer;background:var(--purple);color:#fff;font-weight:700;}
+#speakButton:hover{background:var(--purple-dark);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🌐 Translator</h1>
+
+  <label>From Language</label>
+  <select id="fromLang">
+    <option value="en">English</option>
+    <option value="hi">Hindi</option>
+    <option value="bn">Bengali</option>
+    <option value="ta">Tamil</option>
+    <option value="te">Telugu</option>
+    <option value="ml">Malayalam</option>
+    <option value="kn">Kannada</option>
+    <option value="gu">Gujarati</option>
+    <option value="pa">Punjabi</option>
+    <option value="or">Odia</option>
+    <option value="as">Assamese</option>
+    <option value="ur">Urdu</option>
+  </select>
+
+  <label>To Language</label>
+  <select id="toLang">
+    <option value="hi">Hindi</option>
+    <option value="en">English</option>
+    <option value="bn">Bengali</option>
+    <option value="ta">Tamil</option>
+    <option value="te">Telugu</option>
+    <option value="ml">Malayalam</option>
+    <option value="kn">Kannada</option>
+    <option value="gu">Gujarati</option>
+    <option value="pa">Punjabi</option>
+    <option value="or">Odia</option>
+    <option value="as">Assamese</option>
+    <option value="ur">Urdu</option>
+  </select>
+
+  <label>Translation Style</label>
+  <select id="style">
+    <option value="natural">Natural</option>
+    <option value="translit">Transliteration</option>
+  </select>
+
+  <label>Enter text to translate</label>
+  <textarea id="inputText" rows="4" placeholder="Type text here..."></textarea>
+
+  <div class="controls">
+    <button id="translateButton">🔄 Translate</button>
+    <button id="voiceButton">🎤 Voice</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <label style="margin-top:14px">Translation Result</label>
+  <div style="display:flex; gap:8px; align-items:flex-start;">
+    <textarea id="outputText" rows="4" readonly></textarea>
+    <button id="speakButton" title="Speak translation">🔊</button>
+  </div>
+
+  <div id="alts"></div>
+
+  <label style="margin-top:8px">Enunciation (English)</label>
+  <div id="enunciation" style="background:#f0f0f0;padding:8px;border-radius:8px;min-height:24px;"></div>
+
+  <div style="margin-top:14px">
+    <a href="index.html" style="text-decoration:none;">
+      <button style="background:#999">⬅ Back</button>
+    </a>
+  </div>
+</div>
+
+<script>
+/* ====== CURATED OVERRIDES ====== */
+const OVERRIDES = { 
+hi:{"hello":["नमस्ते","हैलो"],"hi":["नमस्ते","हाय"],"thanks":["धन्यवाद"],"thank you":["धन्यवाद"],"sorry":["माफ़ कीजिए"],"please":["कृपया"],"good morning":["सुप्रभात"],"good night":["शुभ रात्रि"]},
+te:{"hello":["నమస్తే","హలో","నమస్కారం"],"hi":["నమస్తే","హాయ్"],"thanks":["ధన్యవాదాలు"],"thank you":["ధన్యవాదాలు"],"sorry":["క్షమించండి"],"please":["దయచేసి"],"good morning":["శుభోదయం"],"good night":["శుభ రాత్రి"]}
+};
+function looksEnglish(s){ return /^[\x00-\x7F]+$/.test(s); }
+function applyOverrides(q, target, style) {
+  const key=q.toLowerCase().trim(), dict=OVERRIDES[target];
+  if (!dict) return null;
+  const options=dict[key];
+  if (!options) return null;
+  const primary = style==="translit" && options[1] ? options[1] : options[0];
+  return {primary, options};
+}
+function showAlternatives(options){
+  const altsBox=document.getElementById("alts");
+  altsBox.innerHTML="";
+  if (!options) return;
+  altsBox.textContent="Alternatives: ";
+  options.forEach(opt=>{
+    const span=document.createElement("span");
+    span.className="chip";
+    span.textContent=opt;
+    span.onclick=()=>document.getElementById("outputText").value=opt;
+    altsBox.appendChild(span);
+  });
+}
+
+/* ====== TRANSLATION SERVICES ====== */
+const LT_ENDPOINTS=["https://libretranslate.de/translate","https://translate.argosopentech.com/translate"];
+async function tryLibreTranslate(q,target,forceEn=false){
+  const payload={q,source:forceEn?"en":"auto",target,format:"text"};
+  for (const url of LT_ENDPOINTS){
+    try{
+      const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify(payload)});
+      if (!res.ok) continue;
+      const data=await res.json();
+      if (data?.translatedText) return data.translatedText.trim();
+    }catch(_){}
+  }
+  return null;
+}
+async function detectLang(q){
+  try{
+    const res=await fetch("https://libretranslate.de/detect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q})});
+    const data=await res.json();
+    return data?.[0]?.language || (looksEnglish(q)?"en":"auto");
+  }catch(_){return looksEnglish(q)?"en":"auto";}
+}
+async function tryMyMemory(q,target){
+  try{
+    let src=await detectLang(q);
+    if (src==="auto") src=looksEnglish(q)?"en":"en";
+    const url=`https://api.mymemory.translated.net/get?q=${encodeURIComponent(q)}&langpair=${src}|${target}`;
+    const res=await fetch(url);
+    if (!res.ok) return null;
+    const data=await res.json();
+    if (data?.responseData?.translatedText) return data.responseData.translatedText.trim();
+  }catch(_){}
+  return null;
+}
+
+/* ====== MAIN TRANSLATE ACTION ====== */
+document.getElementById("translateButton").addEventListener("click",async()=>{
+  const text=document.getElementById("inputText").value.trim();
+  const target=document.getElementById("toLang").value;
+  const style=document.getElementById("style").value;
+  const status=document.getElementById("status");
+  const outBox=document.getElementById("outputText");
+  document.getElementById("alts").innerHTML="";
+  if (!text) return alert("Enter text to translate!");
+  status.textContent="Translating...";
+  outBox.value="";
+
+  const override=applyOverrides(text,target,style);
+  if (override){
+    outBox.value=override.primary;
+    showAlternatives(override.options);
+    status.textContent="✅ Used curated translation. Speaking...";
+    speakText(override.primary, target);
+    return;
+  }
+
+  const forceEn=looksEnglish(text);
+  let translated=null;
+
+  if (target === "ta") {
+    translated = await tryMyMemory(text, target);
+    if (!translated) translated = await tryLibreTranslate(text, target, forceEn);
+  } else {
+    translated = await tryLibreTranslate(text, target, forceEn);
+    if (!translated) translated = await tryMyMemory(text, target);
+  }
+
+  if (translated){
+    outBox.value = translated;
+    status.textContent = "✅ Translation complete. Speaking...";
+    speakText(translated, target);
+  } else {
+    status.textContent = "❌ Translation failed. Try again later.";
+  }
+});
+
+/* ====== VOICE INPUT FEATURE ====== */
+let recognition, recognizing=false;
+function setStatus(msg){document.getElementById('status').textContent=msg;}
+document.getElementById('voiceButton').addEventListener('click',()=>{
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if (!SR){setStatus("❌ Speech recognition not supported.");return;}
+  const isSecure=location.protocol==="https:"||location.hostname==="localhost";
+  if (!isSecure){setStatus("⚠ Use HTTPS or localhost for mic.");return;}
+  if (!recognition){
+    recognition=new SR();
+    recognition.continuous=false;
+    recognition.interimResults=false;
+    recognition.maxAlternatives=1;
+  }
+  if (!recognizing){
+    recognition.lang=document.getElementById('fromLang').value+'-IN';
+    recognition.start();
+    recognizing=true;
+    setStatus("🎤 Listening...");
+  } else {
+    recognition.stop();
+    recognizing=false;
+    setStatus("⏹ Stopped listening");
+  }
+  recognition.onresult=function(e){
+    if (e.results[0]&&e.results[0][0]){
+      document.getElementById('inputText').value=e.results[0][0].transcript;
+      setStatus("✅ Heard: "+e.results[0][0].transcript);
+    }
+    recognizing=false;
+  };
+  recognition.onerror=function(e){
+    setStatus("❌ Mic error: "+(e.error||"unknown"));
+    recognizing=false;
+  };
+  recognition.onend=function(){
+    recognizing=false;
+    if (document.getElementById('status').textContent.includes("Listening")) setStatus("⚠ No speech detected.");
+  };
+});
+
+/* ====== TEXT-TO-SPEECH FUNCTION ====== */
+function speakText(text, lang){
+  if (!text) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = lang + "-IN";
+  utterance.rate = 1;
+  utterance.pitch = 1;
+  window.speechSynthesis.speak(utterance);
+}
+</script>
+</body>
